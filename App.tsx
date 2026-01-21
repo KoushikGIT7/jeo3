@@ -40,17 +40,8 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Splash screen shows during initial app load (until auth is ready)
-  // This ensures splash displays every time the app starts or reloads
-  useEffect(() => {
-    if (!authLoading) {
-      // Once auth is ready, dismiss splash after a brief delay for better UX
-      const dismissTimer = setTimeout(() => {
-        setShowSplash(false);
-      }, 500);
-      return () => clearTimeout(dismissTimer);
-    }
-  }, [authLoading]);
+  // Note: Splash screen controls its own display duration via onFinish callback
+  // It shows for minimum 2500ms and then calls handleSplashFinish()
 
   // Cross-session QR recovery for logged-in students
   useEffect(() => {
@@ -227,7 +218,7 @@ const App: React.FC = () => {
   // Show loading screen if auth state is still resolving (blocks routing until role is available)
   if (authLoading) {
     return (
-      <div className="h-screen w-full flex items-center justify-center bg-background">
+      <div className="h-screen w-full flex items-center justify-center bg-black z-40">
         <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
       </div>
     );

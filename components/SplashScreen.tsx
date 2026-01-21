@@ -40,7 +40,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({
   return (
     <div 
       className={`
-        fixed inset-0 z-50 
+        fixed inset-0 z-50 pointer-events-auto
         bg-gradient-to-br from-[#0A0A0A] via-[#111111] to-[#0F9D58]/10
         flex flex-col items-center justify-center
         transition-opacity duration-500 ease-out
