@@ -5,7 +5,7 @@ import { UserProfile, CartItem } from '../../types';
 import { createOrder, listenToOrder, getOrder } from '../../services/firestore-db';
 
 interface PaymentViewProps {
-  profile: UserProfile;
+  profile: UserProfile | null;
   onBack: () => void;
   onSuccess: (orderId: string) => void;
 }
@@ -93,9 +93,12 @@ const PaymentView: React.FC<PaymentViewProps> = ({ profile, onBack, onSuccess })
 
     try {
       const isCash = selectedMethod === 'CASH';
+      const guestId = profile?.uid || `guest_${Date.now()}`;
+      const guestName = profile?.name || 'Guest';
+      
       const newOrderId = await createOrder({
-        userId: profile.uid,
-        userName: profile.name || 'Student',
+        userId: guestId,
+        userName: guestName,
         items: cart,
         totalAmount: total,
         paymentType: selectedMethod as any,
@@ -106,6 +109,14 @@ const PaymentView: React.FC<PaymentViewProps> = ({ profile, onBack, onSuccess })
       });
 
       setOrderId(newOrderId);
+      // Store guest order ID in sessionStorage for guest checkout flow
+      if (!profile) {
+        try {
+          sessionStorage.setItem('joe_guest_order_id', newOrderId);
+        } catch (e) {
+          console.warn('Could not store guest order ID', e);
+        }
+      }
       // Clear cart (keep in localStorage for UX, but order is in Firestore)
       localStorage.removeItem('joe_cart');
       

@@ -57,15 +57,16 @@ const App: React.FC = () => {
     return unsub;
   }, [authLoading, profile?.uid, role, view]);
 
-  // 🔑 GUEST CHECKOUT GUARD: If guest tries to access PAYMENT/QR, redirect to LOGIN
-  // After login, user will return to PAYMENT (not Welcome)
+  // 🔑 GUEST CHECKOUT GUARD: If guest tries to access QR or ORDERS, redirect to LOGIN
+  // PAYMENT is allowed for guests (can checkout without login)
+  // After login, user will return to their intended destination
   useEffect(() => {
     if (authLoading) return;
     
-    const guestAccessingCheckout = !user && (view === 'PAYMENT' || view === 'QR' || view === 'ORDERS');
+    const guestAccessingProtectedViews = !user && (view === 'QR' || view === 'ORDERS');
     
-    if (guestAccessingCheckout) {
-      console.log('🔑 [CHECKOUT-GUARD] Guest tried to access:', view, 'redirecting to STAFF_LOGIN (simplified login)');
+    if (guestAccessingProtectedViews) {
+      console.log('🔑 [CHECKOUT-GUARD] Guest tried to access:', view, 'redirecting to STAFF_LOGIN for login');
       // Store the intended destination so we can redirect back after login
       try {
         sessionStorage.setItem('joe_checkout_redirect', view);
@@ -260,21 +261,14 @@ const App: React.FC = () => {
       // Guest will be redirected by the effect, show nothing
       return null;
     case 'PAYMENT':
-      // 🟢 PaymentView must NEVER redirect — it trusts routing
-      // 🔑 If guest, they'll be redirected by CHECKOUT_GUARD effect above
-      if (profile) {
-        return <PaymentView profile={profile} onBack={navigateToHome} onSuccess={navigateToQR} />;
-      }
-      // Guest will be redirected by the effect, show nothing
-      return null;
+      // 🟢 PaymentView allows BOTH authenticated AND guest checkout
+      // Guests can proceed to payment without login
+      // After payment, if guest needs to view orders/QR, they'll be prompted to login
+      return <PaymentView profile={profile} onBack={navigateToHome} onSuccess={navigateToQR} />;
     case 'QR':
-      // 🟢 QRView must NEVER redirect — it trusts routing
-      // 🔑 If guest, they'll be redirected by CHECKOUT_GUARD effect above
-      if (profile) {
-        return <QRView orderId={selectedOrderId!} onBack={navigateToHome} />;
-      }
-      // Guest will be redirected by the effect, show nothing
-      return null;
+      // 🟢 QRView allows BOTH authenticated AND guest checkout
+      // Guests can view their QR after payment without login
+      return <QRView orderId={selectedOrderId!} onBack={navigateToHome} />;
     case 'STAFF_LOGIN':
       return (
         <LoginView
