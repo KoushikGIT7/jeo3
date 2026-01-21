@@ -1,0 +1,74 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Poppins', sans-serif;
+  background-color: #FAFAFA;
+  color: #111827;
+  -webkit-tap-highlight-color: transparent;
+  font-size: clamp(16px, 4vw, 18px); /* Mobile-first base font */
+}
+
+/* Mobile-first button styles */
+button {
+  min-height: 48px; /* Minimum touch target */
+  font-size: clamp(16px, 4vw, 18px); /* Responsive font size */
+}
+
+/* Mobile-first icon sizes */
+svg {
+  min-width: 24px;
+  min-height: 24px;
+}
+
+/* Responsive headings */
+h1 {
+  font-size: clamp(28px, 6vw, 32px);
+}
+
+h2 {
+  font-size: clamp(22px, 5vw, 26px);
+}
+
+h3 {
+  font-size: clamp(18px, 4vw, 22px);
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+input[type=range] {
+  -webkit-appearance: none;
+  width: 100%;
+  background: transparent;
+}
+
+input[type=range]:focus {
+  outline: none;
+}
+
+input[type=range]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 8px;
+  cursor: pointer;
+  background: #E5E7EB;
+  border-radius: 10px;
+}
+
+input[type=range]::-webkit-slider-thumb {
+  height: 24px;
+  width: 24px;
+  border-radius: 50%;
+  background: #0F9D58;
+  cursor: pointer;
+  -webkit-appearance: none;
+  margin-top: -8px;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}

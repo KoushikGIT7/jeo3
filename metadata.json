@@ -1,0 +1,7 @@
+{
+  "name": "JOE - Cafeteria Automation",
+  "description": "Fast meals. Zero chaos. A Gen-Z college cafeteria management system for day scholars.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

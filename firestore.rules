@@ -1,0 +1,138 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to get user role
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    // Helper function to check if user has specific role
+    function hasRole(role) {
+      return isAuthenticated() && getUserRole() == role;
+    }
+    
+    // Helper function to check if user is admin or has specific role
+    function isAdminOrRole(role) {
+      return isAuthenticated() && (getUserRole() == 'admin' || getUserRole() == role);
+    }
+    
+    
+    // ========================================================================
+    // USERS COLLECTION
+    // ========================================================================
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isAuthenticated() && (request.auth.uid == userId || hasRole('admin'));
+      
+      // Only admins can create/update user profiles (except own profile creation during signup)
+      allow create: if isAuthenticated() && (request.auth.uid == userId || hasRole('admin'));
+      allow update: if isAuthenticated() && (request.auth.uid == userId || hasRole('admin'));
+      
+      // Only admins can delete users
+      allow delete: if hasRole('admin');
+    }
+    
+    // ========================================================================
+    // MENU COLLECTION
+    // ========================================================================
+    match /menu/{itemId} {
+      // Everyone can read active menu items
+      allow read: if true;
+      
+      // Only admins can create/update/delete menu items
+      allow write: if hasRole('admin');
+    }
+    
+    // ========================================================================
+    // ORDERS COLLECTION
+    // ========================================================================
+    match /orders/{orderId} {
+      // Users can read their own orders, staff can read all orders
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        isAdminOrRole('cashier') || 
+        isAdminOrRole('server')
+      );
+      
+      // Anyone authenticated can create orders (students)
+      allow create: if isAuthenticated();
+      
+      // Cashiers can update payment status, servers can update serving status
+      allow update: if isAuthenticated() && (
+        hasRole('admin') ||
+        (hasRole('cashier') && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['paymentStatus', 'qrStatus', 'confirmedBy', 'confirmedAt'])) ||
+        (hasRole('server') && request.resource.data.diff(resource.data).affectedKeys().hasAny(['orderStatus', 'scannedAt', 'servedAt', 'items']))
+      );
+      
+      // Only admins can delete orders
+      allow delete: if hasRole('admin');
+    }
+    
+    // ========================================================================
+    // INVENTORY COLLECTION
+    // ========================================================================
+    match /inventory/{itemId} {
+      // Staff and admins can read inventory
+      allow read: if isAuthenticated() && (hasRole('admin') || hasRole('server') || hasRole('cashier'));
+      
+      // Only admins and servers can update inventory
+      allow write: if isAuthenticated() && (hasRole('admin') || hasRole('server'));
+    }
+    
+    // ========================================================================
+    // SETTINGS COLLECTION
+    // ========================================================================
+    match /settings/{settingId} {
+      // Everyone can read settings
+      allow read: if true;
+      
+      // Only admins can update settings
+      allow write: if hasRole('admin');
+    }
+    
+    // ========================================================================
+    // SCAN LOGS COLLECTION
+    // ========================================================================
+    match /scanLogs/{logId} {
+      // Staff and admins can read scan logs
+      allow read: if isAuthenticated() && (hasRole('admin') || hasRole('server') || hasRole('cashier'));
+      
+      // Servers can create scan logs (write-once)
+      allow create: if isAuthenticated() && (hasRole('admin') || hasRole('server'));
+      
+      // Only admins can update/delete logs
+      allow update, delete: if hasRole('admin');
+    }
+    
+    // ========================================================================
+    // SERVE LOGS COLLECTION
+    // ========================================================================
+    match /serveLogs/{logId} {
+      // Staff and admins can read serve logs
+      allow read: if isAuthenticated() && (hasRole('admin') || hasRole('server') || hasRole('cashier'));
+      
+      // Servers can create serve logs (write-once)
+      allow create: if isAuthenticated() && (hasRole('admin') || hasRole('server'));
+      
+      // Only admins can update/delete logs
+      allow update, delete: if hasRole('admin');
+    }
+    
+    // ========================================================================
+    // DAILY REPORTS COLLECTION
+    // ========================================================================
+    match /dailyReports/{reportId} {
+      // Admins and cashiers can read reports
+      allow read: if isAuthenticated() && (hasRole('admin') || hasRole('cashier'));
+      
+      // Only admins can create/update reports
+      allow write: if hasRole('admin');
+    }
+  }
+}
