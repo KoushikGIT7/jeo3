@@ -40,18 +40,17 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Splash screen should only appear on FIRST app visit (per device)
+  // Splash screen shows during initial app load (until auth is ready)
+  // This ensures splash displays every time the app starts or reloads
   useEffect(() => {
-    try {
-      const hasSeenSplash = window.localStorage.getItem('joe_has_seen_splash');
-      if (hasSeenSplash === 'true') {
+    if (!authLoading) {
+      // Once auth is ready, dismiss splash after a brief delay for better UX
+      const dismissTimer = setTimeout(() => {
         setShowSplash(false);
-      }
-    } catch (e) {
-      // If localStorage is unavailable, fall back to showing splash once per load
-      console.warn('Splash first-visit flag read failed:', e);
+      }, 500);
+      return () => clearTimeout(dismissTimer);
     }
-  }, []);
+  }, [authLoading]);
 
   // Cross-session QR recovery for logged-in students
   useEffect(() => {
@@ -165,11 +164,6 @@ const App: React.FC = () => {
 
   // Handle splash screen completion
   const handleSplashFinish = () => {
-    try {
-      window.localStorage.setItem('joe_has_seen_splash', 'true');
-    } catch (e) {
-      console.warn('Splash first-visit flag write failed:', e);
-    }
     setShowSplash(false);
   };
 
