@@ -57,16 +57,16 @@ const App: React.FC = () => {
     return unsub;
   }, [authLoading, profile?.uid, role, view]);
 
-  // 🔑 GUEST CHECKOUT GUARD: If guest tries to access QR or ORDERS, redirect to LOGIN
+  // 🔑 GUEST ORDERS GUARD: If guest tries to access ORDERS (view all orders), redirect to LOGIN
+  // QR view is allowed for guests (can view their own QR after payment)
   // PAYMENT is allowed for guests (can checkout without login)
-  // After login, user will return to their intended destination
   useEffect(() => {
     if (authLoading) return;
     
-    const guestAccessingProtectedViews = !user && (view === 'QR' || view === 'ORDERS');
+    const guestAccessingOrdersView = !user && view === 'ORDERS';
     
-    if (guestAccessingProtectedViews) {
-      console.log('🔑 [CHECKOUT-GUARD] Guest tried to access:', view, 'redirecting to STAFF_LOGIN for login');
+    if (guestAccessingOrdersView) {
+      console.log('🔑 [ORDERS-GUARD] Guest tried to access ORDERS, redirecting to STAFF_LOGIN for login');
       // Store the intended destination so we can redirect back after login
       try {
         sessionStorage.setItem('joe_checkout_redirect', view);

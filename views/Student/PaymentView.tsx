@@ -88,6 +88,16 @@ const PaymentView: React.FC<PaymentViewProps> = ({ profile, onBack, onSuccess })
   const handlePayment = async () => {
     setState('PROCESSING');
     
+    // Prevent browser from showing credential dialogs during payment
+    try {
+      // Disable credential storage during payment
+      if (window.navigator && window.navigator.credentials) {
+        window.navigator.credentials = undefined as any;
+      }
+    } catch (e) {
+      // Silently fail if we can't disable credentials
+    }
+    
     // Simulate payment gateway delay
     await new Promise(resolve => setTimeout(resolve, 1500));
 
@@ -95,6 +105,8 @@ const PaymentView: React.FC<PaymentViewProps> = ({ profile, onBack, onSuccess })
       const isCash = selectedMethod === 'CASH';
       const guestId = profile?.uid || `guest_${Date.now()}`;
       const guestName = profile?.name || 'Guest';
+      
+      console.log('💳 Processing payment for:', { isCash, guestId, method: selectedMethod });
       
       const newOrderId = await createOrder({
         userId: guestId,
@@ -108,6 +120,8 @@ const PaymentView: React.FC<PaymentViewProps> = ({ profile, onBack, onSuccess })
         cafeteriaId: 'MAIN_CAFE'
       });
 
+      console.log('✅ Order created successfully:', newOrderId);
+      
       setOrderId(newOrderId);
       // Store guest order ID in sessionStorage for guest checkout flow
       if (!profile) {
@@ -121,12 +135,14 @@ const PaymentView: React.FC<PaymentViewProps> = ({ profile, onBack, onSuccess })
       localStorage.removeItem('joe_cart');
       
       if (isCash) {
+        console.log('⏳ Waiting for cash payment approval...');
         setState('CASH_WAITING');
       } else {
+        console.log('🎯 Payment successful, navigating to QR...');
         onSuccess(newOrderId);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('❌ Payment processing error:', err);
       setState('IDLE');
       alert("Order creation failed. Please try again.");
     }
@@ -334,6 +350,9 @@ const PaymentView: React.FC<PaymentViewProps> = ({ profile, onBack, onSuccess })
           onClick={handlePayment}
           disabled={cart.length === 0}
           className="w-full bg-primary text-white font-bold py-5 rounded-2xl shadow-xl shadow-primary/20 active:scale-95 transition-all disabled:opacity-50"
+          autoComplete="off"
+          data-lpignore="true"
+          data-form-type="other"
         >
           {selectedMethod === 'CASH' ? 'Confirm Order' : `Pay ₹${total} Now`}
         </button>
