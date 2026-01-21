@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { initializeMenu, listenToLatestActiveQR } from './services/firestore-db';
 import SplashScreen from './components/SplashScreen';
-import { signInWithGoogleRedirect } from './services/auth';
+import { signInWithGoogle } from './services/auth';
 
 // Views
 import WelcomeView from './views/Student/WelcomeView';
@@ -67,20 +67,40 @@ const App: React.FC = () => {
     return unsub;
   }, [authLoading, profile?.uid, role, view]);
 
+  // 🔑 GUEST CHECKOUT GUARD: If guest tries to access PAYMENT/QR, redirect to LOGIN
+  // After login, user will return to PAYMENT (not Welcome)
+  useEffect(() => {
+    if (authLoading) return;
+    
+    const guestAccessingCheckout = !user && (view === 'PAYMENT' || view === 'QR' || view === 'ORDERS');
+    
+    if (guestAccessingCheckout) {
+      console.log('🔑 [CHECKOUT-GUARD] Guest tried to access:', view, 'redirecting to STAFF_LOGIN (simplified login)');
+      // Store the intended destination so we can redirect back after login
+      try {
+        sessionStorage.setItem('joe_checkout_redirect', view);
+      } catch (e) {
+        console.warn('Session storage unavailable', e);
+      }
+      setView('STAFF_LOGIN');
+    }
+  }, [authLoading, user, view]);
+
   /**
-   * Auth bootstrap & role routing
+   * Auth bootstrap & role routing (CRITICAL FIX)
    * - Depends ONLY on Firebase auth state (via useAuth)
-   * - No manual navigate after login
-   * - Welcome view is shown only when auth user is null
-   * - On refresh, Firebase restores session and we re-route based on role
+   * - No redirects while authLoading === true
+   * - Welcome view is shown ONLY when user === null
+   * - NEVER interrupt PAYMENT/QR/ORDERS flows for authenticated users
+   * - On refresh, Firebase restores session and we route based on role
    */
   useEffect(() => {
     if (authLoading) {
-      return;
+      return; // 🚫 DO NOT redirect while loading
     }
 
     // UNAUTHENTICATED / GUEST:
-    // user === null → we can be on WELCOME or student guest flows (HOME / PAYMENT / QR)
+    // user === null → only show WELCOME or guest flows (HOME / PAYMENT / QR)
     if (!user || !profile || !role) {
       // Ensure we never show staff/admin portals when there is no authenticated user
       setView((prev) => {
@@ -93,42 +113,49 @@ const App: React.FC = () => {
       return;
     }
 
-    // AUTHENTICATED:
+    // AUTHENTICATED USER:
     // Once Firebase restores the session and we have a profile + role,
-    // pick the correct portal exactly once and let sub-views handle their own flow.
-    const validRoles: ViewState[] = ['ADMIN', 'CASHIER', 'SERVING_COUNTER', 'HOME'];
+    // apply routing ONLY if needed (WELCOME → portal, invalid views → portal).
+    // NEVER interrupt PAYMENT / QR / ORDERS flows.
+    
     let targetView: ViewState;
-      
-      if (role === 'admin') {
-        targetView = 'ADMIN';
-      } else if (role === 'cashier') {
-        targetView = 'CASHIER';
-      } else if (role === 'server') {
-        targetView = 'SERVING_COUNTER';
+    if (role === 'admin') {
+      targetView = 'ADMIN';
+    } else if (role === 'cashier') {
+      targetView = 'CASHIER';
+    } else if (role === 'server') {
+      targetView = 'SERVING_COUNTER';
     } else {
-      // Default for authenticated users is student portal
-        targetView = 'HOME';
-      }
-      
+      // Default for authenticated users is HOME
+      targetView = 'HOME';
+    }
+
     setView((prev) => {
-      // CRITICAL: If we're on WELCOME and user is authenticated, ALWAYS route to portal
+      // 🔴 CRITICAL SAFETY: If we're on WELCOME and user is authenticated, ALWAYS route away
       // This fixes the Google redirect issue where user gets stuck on Welcome
       if (prev === 'WELCOME') {
-        console.log('🔄 Routing authenticated user away from WELCOME to:', targetView);
+        console.log('🔄 [AUTH] Routing authenticated user away from WELCOME to:', targetView);
         return targetView;
       }
 
-      // For students, don't override active in-flow views (PAYMENT / QR / ORDERS / HOME)
-      if (role === 'student') {
-        const studentFlows: ViewState[] = ['HOME', 'PAYMENT', 'QR', 'ORDERS'];
-        if (studentFlows.includes(prev)) {
-          return prev;
-        }
+      // 🟢 CRITICAL RULE: For authenticated users in payment/order flow,
+      // NEVER redirect them away from PAYMENT / QR / ORDERS
+      // These views manage their own lifecycle and navigation
+      const protectedFlows: ViewState[] = ['PAYMENT', 'QR', 'ORDERS'];
+      if (protectedFlows.includes(prev)) {
+        console.log('🟢 [AUTH] Preserving in-flow view:', prev, '(protected from redirect)');
+        return prev;
       }
 
-      // For staff/admin, or invalid views, route to exact portal
-      if (!validRoles.includes(prev)) {
-        console.log('🔄 Routing to valid portal:', targetView, 'from invalid view:', prev);
+      // For students, don't override HOME view
+      if (role === 'student' && prev === 'HOME') {
+        return prev;
+      }
+
+      // For staff/admin, or genuinely invalid views, route to exact portal
+      const validViews: ViewState[] = ['ADMIN', 'CASHIER', 'SERVING_COUNTER', 'HOME'];
+      if (!validViews.includes(prev)) {
+        console.log('🔄 [AUTH] Routing from invalid view:', prev, 'to valid portal:', targetView);
         return targetView;
       }
 
@@ -162,10 +189,13 @@ const App: React.FC = () => {
   const navigateToStaffLogin = () => setView('STAFF_LOGIN');
   const navigateToLogin = async () => {
     try {
-      // Pure Google redirect sign-in – routing after login is driven ONLY by onAuthStateChanged
-      await signInWithGoogleRedirect();
+      // Use popup-based Google sign-in (faster, no redirect loop)
+      // signInWithGoogle handles profile creation automatically
+      // onAuthStateChanged will handle routing after auth succeeds
+      await signInWithGoogle();
+      console.log('✅ Google sign-in completed, waiting for auth state to propagate...');
     } catch (error: any) {
-      console.error('Google sign-in failed:', error);
+      console.error('❌ Google sign-in failed:', error);
       alert('Google sign-in failed. Please try again.');
     }
   };
@@ -213,10 +243,10 @@ const App: React.FC = () => {
   // Each portal view is protected - only accessible to users with matching role
   switch (view) {
     case 'WELCOME':
-      // CRITICAL SAFETY: If user is authenticated, show their portal immediately
-      // This prevents getting stuck on Welcome after Google redirect
-      // The routing effect should handle this, but this is a safety net
+      // 🚫 CRITICAL SAFETY: If user is already authenticated, NEVER show Welcome
+      // This is the final safety net to prevent Welcome → Payment → Welcome loops
       if (user && profile && role) {
+        console.warn('🚨 [WELCOME] Authenticated user found on Welcome page, routing to portal immediately');
         if (role === 'admin') return <AdminDashboard profile={profile} onLogout={handleLogout} />;
         if (role === 'cashier') return <CashierView profile={profile} onLogout={handleLogout} />;
         if (role === 'server') return <ServingCounterView profile={profile} onLogout={handleLogout} />;
@@ -232,31 +262,47 @@ const App: React.FC = () => {
         />
       );
     case 'HOME':
-          return <HomeView profile={profile} onProceed={navigateToPayment} onLogout={handleLogout} />;
+      // 🟢 HOME can be shown to both authenticated AND unauthenticated users (guest browsing)
+      // For authenticated users, show full home view
+      // For unauthenticated, guest can still browse (cart won't persist)
+      return <HomeView profile={profile} onProceed={navigateToPayment} onViewOrders={() => setView('ORDERS')} onLogout={handleLogout} />;
     case 'ORDERS':
-      return <OrdersView profile={profile} onBack={navigateToHome} />;
-    case 'PAYMENT':
-      // Orders are allowed whenever Firebase user exists; no re-auth redirects here.
-      if (!user || !profile) {
-        return (
-          <WelcomeView
-            onStart={handleStartOrdering}
-            onStaffLogin={navigateToLogin}
-            onAdminLogin={navigateToStaffLogin}
-            disabled={authLoading}
-          />
-        );
+      // 🟢 For authenticated users, show orders view with real-time updates
+      // 🔑 If guest, they'll be redirected by CHECKOUT_GUARD effect above
+      if (profile) {
+        return <OrdersView profile={profile} onBack={navigateToHome} onQROpen={navigateToQR} />;
       }
-      return <PaymentView profile={profile} onBack={navigateToHome} onSuccess={navigateToQR} />;
+      // Guest will be redirected by the effect, show nothing
+      return null;
+    case 'PAYMENT':
+      // 🟢 PaymentView must NEVER redirect — it trusts routing
+      // 🔑 If guest, they'll be redirected by CHECKOUT_GUARD effect above
+      if (profile) {
+        return <PaymentView profile={profile} onBack={navigateToHome} onSuccess={navigateToQR} />;
+      }
+      // Guest will be redirected by the effect, show nothing
+      return null;
     case 'QR':
-      return <QRView orderId={selectedOrderId!} onBack={navigateToHome} />;
+      // 🟢 QRView must NEVER redirect — it trusts routing
+      // 🔑 If guest, they'll be redirected by CHECKOUT_GUARD effect above
+      if (profile) {
+        return <QRView orderId={selectedOrderId!} onBack={navigateToHome} />;
+      }
+      // Guest will be redirected by the effect, show nothing
+      return null;
     case 'STAFF_LOGIN':
       return (
         <LoginView
           onBack={() => setView('WELCOME')}
           onSuccess={() => {
-            // No manual routing here.
-            // Once Firebase auth + Firestore profile resolve, the auth bootstrap effect routes by role.
+            // 🔑 After login, check if guest was trying to checkout
+            const checkoutRedirect = sessionStorage.getItem('joe_checkout_redirect');
+            if (checkoutRedirect) {
+              sessionStorage.removeItem('joe_checkout_redirect');
+              console.log('🔑 [LOGIN-SUCCESS] Redirecting guest to:', checkoutRedirect);
+              setView(checkoutRedirect as ViewState);
+            }
+            // Otherwise, auth bootstrap effect will route by role
           }}
         />
       );
@@ -310,10 +356,12 @@ const App: React.FC = () => {
         />
       );
     default:
-      // Default fallback: respect auth state to avoid welcome loop for logged-in users
+      // 🟢 Default fallback: respect auth state to avoid welcome loop for logged-in users
       if (user && profile) {
+        console.warn('⚠️ [DEFAULT] Unexpected view state, routing authenticated user to HOME');
         return <HomeView profile={profile} onProceed={navigateToPayment} onLogout={handleLogout} />;
       }
+      console.warn('⚠️ [DEFAULT] Unexpected view state, routing unauthenticated user to WELCOME');
       return (
         <WelcomeView
           onStart={handleStartOrdering}

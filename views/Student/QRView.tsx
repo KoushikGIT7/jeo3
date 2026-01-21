@@ -4,7 +4,7 @@ import { ChevronLeft, CheckCircle2, Info, Share2, Clock, Loader2, AlertCircle } 
 import { QRCodeSVG } from 'qrcode.react';
 import { listenToOrder } from '../../services/firestore-db';
 import { Order } from '../../types';
-import { generateQRPayload } from '../../services/qr';
+import { shouldShowQR, getOrderStatusMessage, getOrderUIState } from '../../utils/orderLifecycle';
 import { updateDoc, doc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import SyncStatus from '../../components/SyncStatus';
@@ -21,61 +21,72 @@ const QRView: React.FC<QRViewProps> = ({ orderId, onBack }) => {
   const qrGeneratedRef = useRef(false);
 
   useEffect(() => {
-    console.log('📱 QRView: Setting up listener for order:', orderId);
+    console.log('📱 QRView: Setting up real-time listener for order:', orderId);
     const unsubscribe = listenToOrder(orderId, (data) => {
-      console.log('📱 QRView: Order update received:', {
+      console.log('📱 QRView: Real-time order update:', {
         orderId: data?.id,
         paymentStatus: data?.paymentStatus,
         qrStatus: data?.qrStatus,
-        hasQR: !!qrString
+        orderStatus: data?.orderStatus,
+        uiState: data ? getOrderUIState(data) : 'unknown'
       });
       
       setOrder(data);
       setLoading(false);
       
-      // Prefer persisted Firestore token (durable across refresh/devices)
-      if (data?.qr?.token && data.qrStatus === 'ACTIVE') {
-        setQrString(data.qr.token);
-        qrGeneratedRef.current = true;
+      if (!data) {
+        console.warn('⚠️ QRView: Order not found');
+        setQrString(null);
         return;
       }
 
-      // Legacy/backfill: if ACTIVE + SUCCESS but token missing, generate once and persist into Firestore
-      if (data && data.paymentStatus === 'SUCCESS' && data.qrStatus === 'ACTIVE' && !qrGeneratedRef.current) {
-        (async () => {
+      // QR should be shown ONLY when: paymentStatus === SUCCESS && qrStatus === ACTIVE && orderStatus === ACTIVE
+      if (shouldShowQR(data)) {
+        // Prefer persisted Firestore token (durable across refresh/devices)
+        if (data.qr?.token) {
+          console.log('✅ QRView: Using persisted QR token from Firestore');
+          setQrString(data.qr.token);
+          qrGeneratedRef.current = true;
+          return;
+        }
+
+        // Generate instantly using sync version if missing
+        if (!qrGeneratedRef.current) {
+          console.log('🎨 QRView: Generating QR code instantly for order:', data.id);
           try {
-            console.log('🎨 QRView: Generating QR code for order:', data.id);
-            const qr = await generateQRPayload(data);
+            const { generateQRPayloadSync } = require('../../services/qr');
+            const qr = generateQRPayloadSync(data);
             setQrString(qr);
-            qrGeneratedRef.current = true; // Mark as generated to prevent regeneration
-            console.log('✅ QRView: QR code generated successfully');
-            try {
-              await updateDoc(doc(db, 'orders', data.id), {
-                qr: { token: qr, status: 'ACTIVE', createdAt: serverTimestamp() }
-              });
-            } catch (e) {
-              // non-blocking
-            }
+            qrGeneratedRef.current = true;
+            console.log('✅ QRView: QR code generated instantly');
+            
+            // Persist to Firestore asynchronously (non-blocking)
+            (async () => {
+              try {
+                await updateDoc(doc(db, 'orders', data.id), {
+                  qr: { token: qr, status: 'ACTIVE', createdAt: serverTimestamp() }
+                });
+                console.log('✅ QRView: QR persisted to Firestore');
+              } catch (err) {
+                console.warn('⚠️ QRView: Failed to persist QR (non-blocking):', err);
+              }
+            })();
           } catch (err) {
-            console.error('❌ QRView: QR generation failed:', err);
-            // Fallback to sync version for backward compatibility
-            try {
-              const { generateQRPayloadSync } = await import('../../services/qr');
-              const qr = generateQRPayloadSync(data);
-              setQrString(qr);
-              qrGeneratedRef.current = true;
-              console.log('✅ QRView: QR code generated using fallback method');
-            } catch (fallbackErr) {
-              console.error('❌ QRView: Fallback QR generation also failed:', fallbackErr);
-              setQrString(null);
-            }
+            console.error('❌ QRView: Sync QR generation failed:', err);
+            setQrString(null);
           }
-        })();
-      } else if (data && (data.paymentStatus !== 'SUCCESS' || data.qrStatus !== 'ACTIVE')) {
-        console.log('⚠️ QRView: Order not ready for QR - Payment:', data.paymentStatus, 'QR:', data.qrStatus);
+        }
+      } else {
+        // QR should NOT be shown - order state doesn't support it
+        console.log('📍 QRView: QR not applicable for this order state', {
+          paymentStatus: data.paymentStatus,
+          qrStatus: data.qrStatus,
+          orderStatus: data.orderStatus
+        });
         setQrString(null);
       }
     });
+    
     return unsubscribe;
   }, [orderId]);
 
@@ -89,11 +100,36 @@ const QRView: React.FC<QRViewProps> = ({ orderId, onBack }) => {
   
   if (!order) return <div className="p-10 text-center">Order not found.</div>;
 
-  const canShowQR = order.paymentStatus === 'SUCCESS' && order.qrStatus === 'ACTIVE' && qrString !== null;
-  const isUsed = order.qrStatus === 'USED';
-  const paymentPending = order.paymentStatus !== 'SUCCESS';
+  const uiState = getOrderUIState(order);
+  const qrIsVisible = shouldShowQR(order) && qrString !== null;
+  const isScanned = uiState === 'SCANNED';
 
-  if (paymentPending) {
+  // 📍 Real-time status check: if QR was scanned, show confirmation
+  if (isScanned) {
+    return (
+      <div className="h-screen w-full flex flex-col bg-background max-w-md mx-auto">
+        <div className="p-4 bg-white flex items-center gap-4 border-b">
+          <button onClick={onBack} className="p-2 -ml-2 text-textMain"><ChevronLeft className="w-6 h-6" /></button>
+          <h2 className="text-xl font-bold text-textMain">Order Status</h2>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+          <CheckCircle2 className="w-16 h-16 text-success mb-4" />
+          <h3 className="text-xl font-bold text-textMain mb-2">Order Accepted!</h3>
+          <p className="text-textSecondary mb-4">Your order has been scanned and is being prepared.</p>
+          <p className="text-sm text-textSecondary mb-8">Scanned at: {order.scannedAt ? new Date(order.scannedAt).toLocaleTimeString() : 'N/A'}</p>
+          <button 
+            onClick={onBack}
+            className="w-full bg-primary text-white font-bold py-4 rounded-2xl active:scale-95 transition-all"
+          >
+            View Orders
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 📍 Real-time status check: if payment pending
+  if (order.paymentStatus !== 'SUCCESS') {
     return (
       <div className="h-screen w-full flex flex-col bg-background max-w-md mx-auto">
         <div className="p-4 bg-white flex items-center gap-4 border-b">
@@ -115,6 +151,16 @@ const QRView: React.FC<QRViewProps> = ({ orderId, onBack }) => {
     );
   }
 
+  // 📍 Loading QR
+  if (!qrIsVisible && loading) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background">
+        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  // 📍 Main QR display (only shown when qrIsVisible)
   return (
     <div className="h-screen w-full flex flex-col bg-background max-w-md mx-auto">
       {/* Header */}
@@ -133,21 +179,15 @@ const QRView: React.FC<QRViewProps> = ({ orderId, onBack }) => {
         {/* Success Banner */}
         <div className="w-full bg-success/10 text-success p-4 rounded-2xl flex items-center gap-3 mb-8">
           <CheckCircle2 className="w-6 h-6 shrink-0" />
-          <p className="text-sm font-bold">Payment Successful! Order Confirmed.</p>
+          <p className="text-sm font-bold">Payment Successful! Ready for Pickup.</p>
         </div>
 
         {/* QR Card */}
-        <div className={`w-full bg-white rounded-3xl p-6 sm:p-8 shadow-xl border-t-8 transition-all ${isUsed ? 'border-error/50 grayscale opacity-60' : 'border-green-500'} text-center relative overflow-visible`}>
-          {isUsed && (
-            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10 rounded-3xl">
-              <div className="bg-error text-white px-6 py-2 rounded-full font-bold -rotate-12 shadow-lg">ALREADY SCANNED</div>
-            </div>
-          )}
-          
+        <div className={`w-full bg-white rounded-3xl p-6 sm:p-8 shadow-xl border-t-8 transition-all border-green-500 text-center relative overflow-visible`}>
           <h3 className="text-xl font-bold text-textMain mb-1">Scan this QR at the serving counter</h3>
           <p className="text-xs text-textSecondary mb-6">Show this to the server to get your food</p>
 
-          {canShowQR && qrString && (
+          {qrIsVisible && qrString && (
             <div className="w-full flex justify-center items-center mb-6">
               <div className="p-8 bg-white border-4 border-green-500 rounded-3xl shadow-2xl flex items-center justify-center">
                 <div className="bg-white p-4 rounded-2xl">
@@ -164,7 +204,7 @@ const QRView: React.FC<QRViewProps> = ({ orderId, onBack }) => {
             </div>
           )}
 
-          {!canShowQR && !isUsed && (
+          {!qrIsVisible && (
             <div className="p-6 mb-6">
               <Loader2 className="w-16 h-16 text-primary animate-spin mx-auto" />
             </div>

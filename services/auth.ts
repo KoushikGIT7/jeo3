@@ -12,6 +12,7 @@ import {
   updateProfile,
   GoogleAuthProvider,
   signInWithRedirect,
+  signInWithPopup,
   // Use Firebase default persistence (local) for web
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -181,7 +182,63 @@ export const createUserProfile = async (
 };
 
 /**
- * Google Sign-In with redirect (mobile friendly)
+ * Google Sign-In with popup (web-native)
+ * Does NOT navigate - lets onAuthStateChanged handle routing
+ */
+export const signInWithGoogle = async (): Promise<{ user: FirebaseUser; profile: UserProfile }> => {
+  try {
+    const provider = new GoogleAuthProvider();
+    
+    // Use popup for web (faster, no redirect loop)
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+    
+    console.log('🔐 signInWithGoogle: Firebase popup auth successful for', user.email);
+    
+    // Auto-create profile if doesn't exist
+    let profile = await getUserProfile(user.uid);
+    
+    if (!profile) {
+      console.log('📝 signInWithGoogle: Creating new user profile for', user.email);
+      await createUserProfile(
+        user.uid,
+        user.email || '',
+        user.displayName || 'Student',
+        'student'
+      );
+      profile = await getUserProfile(user.uid);
+    }
+    
+    if (!profile) {
+      // Fallback in-memory profile (should not happen)
+      console.warn('⚠️ signInWithGoogle: Profile creation failed, using fallback');
+      profile = {
+        uid: user.uid,
+        name: user.displayName || 'Student',
+        email: user.email || '',
+        role: 'student',
+        active: true,
+        createdAt: Date.now(),
+        lastActive: Date.now(),
+      };
+    }
+    
+    console.log('✅ signInWithGoogle: Complete - user profile ready:', {
+      email: profile.email,
+      role: profile.role
+    });
+    
+    // 🚫 DO NOT NAVIGATE - let onAuthStateChanged handle routing
+    return { user, profile };
+  } catch (error: any) {
+    console.error('❌ signInWithGoogle failed:', error);
+    throw error;
+  }
+};
+
+/**
+ * Legacy: Google Sign-In with redirect (kept for compatibility)
+ * @deprecated Use signInWithGoogle instead
  */
 export const signInWithGoogleRedirect = async () => {
   const provider = new GoogleAuthProvider();

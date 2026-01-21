@@ -12,10 +12,11 @@ interface PaymentViewProps {
 
 const PaymentView: React.FC<PaymentViewProps> = ({ profile, onBack, onSuccess }) => {
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [state, setState] = useState<'IDLE' | 'PROCESSING' | 'CASH_WAITING'>('IDLE');
+  const [state, setState] = useState<'IDLE' | 'PROCESSING' | 'CASH_WAITING' | 'REJECTED'>('IDLE');
   const [selectedMethod, setSelectedMethod] = useState<string>('UPI');
   const [orderId, setOrderId] = useState<string | null>(null);
   const [orderStatus, setOrderStatus] = useState<'PENDING' | 'APPROVED' | null>(null);
+  const [rejectionMessage, setRejectionMessage] = useState<string>('');
 
   // Load cart and restore pending order state
   useEffect(() => {
@@ -63,10 +64,13 @@ const PaymentView: React.FC<PaymentViewProps> = ({ profile, onBack, onSuccess })
           console.warn('❌ Payment rejected by cashier');
           hasNavigated = true;
           setOrderStatus(null);
-          setState('IDLE');
-          alert('Payment rejected by cashier. Please place a new order.');
-          onBack(); // Redirect back to home/previous
-          return;
+          setRejectionMessage('Your payment was rejected by the cashier. Please try again or contact support.');
+          setState('REJECTED');
+          // Auto-redirect to home after 3 seconds
+          const timer = setTimeout(() => {
+            onBack();
+          }, 3000);
+          return () => clearTimeout(timer);
         }
 
         if (!order) {
@@ -130,6 +134,33 @@ const PaymentView: React.FC<PaymentViewProps> = ({ profile, onBack, onSuccess })
         <Loader2 className="w-16 h-16 text-primary animate-spin mb-6" />
         <h2 className="text-2xl font-bold text-textMain">Verifying Securely</h2>
         <p className="text-textSecondary mt-2">Connecting to JOE backend...</p>
+      </div>
+    );
+  }
+
+  if (state === 'REJECTED') {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center p-8 bg-white max-w-md mx-auto text-center">
+        <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6 animate-pulse">
+          <svg className="w-10 h-10 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <h2 className="text-2xl font-bold text-red-600">Payment Rejected</h2>
+        <p className="text-textSecondary mt-4 px-4 leading-relaxed">
+          {rejectionMessage}
+        </p>
+        <p className="text-xs text-textSecondary mt-6 animate-pulse">
+          Redirecting to home in 3 seconds...
+        </p>
+        <div className="mt-8">
+          <button
+            onClick={onBack}
+            className="px-6 py-3 bg-primary text-white font-bold rounded-xl"
+          >
+            Go Back Now
+          </button>
+        </div>
       </div>
     );
   }

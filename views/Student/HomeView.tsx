@@ -14,10 +14,11 @@ import Logo from '../../components/Logo';
 interface HomeViewProps {
   profile: UserProfile | null;
   onProceed: () => void;
+  onViewOrders?: () => void;
   onLogout: () => void;
 }
 
-const HomeView: React.FC<HomeViewProps> = ({ profile, onProceed, onLogout }) => {
+const HomeView: React.FC<HomeViewProps> = ({ profile, onProceed, onViewOrders, onLogout }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('Breakfast');
   const [cart, setCart] = useState<Record<string, CartItem>>({});
   const [search, setSearch] = useState('');
@@ -184,12 +185,26 @@ const HomeView: React.FC<HomeViewProps> = ({ profile, onProceed, onLogout }) => 
           {/* (Removed extra placeholder buttons to keep home UX clean) */}
         </div>
 
-        <button 
-          onClick={onLogout}
-          className="w-full py-5 bg-error/5 text-error rounded-[1.5rem] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 hover:bg-error hover:text-white transition-all mt-8"
-        >
-          <LogOut className="w-4 h-4" /> End Session
-        </button>
+        <div className="space-y-3 mt-8">
+          {onViewOrders && (
+            <button 
+              onClick={() => {
+                setIsDrawerOpen(false);
+                onViewOrders();
+              }}
+              className="w-full py-5 bg-primary/5 text-primary rounded-[1.5rem] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 hover:bg-primary hover:text-white transition-all"
+            >
+              <ShoppingBag className="w-4 h-4" /> My Orders
+            </button>
+          )}
+          
+          <button 
+            onClick={onLogout}
+            className="w-full py-5 bg-error/5 text-error rounded-[1.5rem] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 hover:bg-error hover:text-white transition-all"
+          >
+            <LogOut className="w-4 h-4" /> End Session
+          </button>
+        </div>
       </aside>
 
       {/* Main Home Header */}
