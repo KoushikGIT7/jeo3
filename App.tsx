@@ -175,14 +175,29 @@ const App: React.FC = () => {
   const navigateToStaffLogin = () => setView('STAFF_LOGIN');
   const navigateToLogin = async () => {
     try {
-      // Use popup-based Google sign-in (faster, no redirect loop)
-      // signInWithGoogle handles profile creation automatically
+      // Platform-aware Google sign-in:
+      // - Web: Uses popup (faster, no redirect)
+      // - Mobile/APK: Uses redirect (required for native platforms)
+      // In both cases, signInWithGoogle handles profile creation automatically
       // onAuthStateChanged will handle routing after auth succeeds
       await signInWithGoogle();
-      console.log('✅ Google sign-in completed, waiting for auth state to propagate...');
+      console.log('✅ Google sign-in initiated, waiting for auth state to propagate...');
     } catch (error: any) {
-      console.error('❌ Google sign-in failed:', error);
-      alert('Google sign-in failed. Please try again.');
+      // Only show error for popup-based auth (web)
+      // Redirect-based auth (mobile) doesn't throw - it redirects then authenticates
+      console.error('❌ Google sign-in error:', error);
+      
+      // Check if this is a redirect timeout or network error (show user-friendly message)
+      if (error?.code === 'auth/popup-blocked') {
+        alert('Please enable popups for this site to use Google Sign-In.');
+      } else if (error?.message?.includes('redirect')) {
+        // Redirect auth - don't show error, auth handler will manage it
+        console.log('📱 Redirect auth in progress...');
+      } else if (error?.code === 'auth/operation-not-supported-in-this-environment') {
+        alert('Google Sign-In is not available in this environment. Please try again.');
+      } else if (error) {
+        alert('Google sign-in failed. Please check your connection and try again.');
+      }
     }
   };
   const navigateToPayment = () => setView('PAYMENT');

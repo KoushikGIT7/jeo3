@@ -13,6 +13,7 @@ import {
   GoogleAuthProvider,
   signInWithRedirect,
   signInWithPopup,
+  getRedirectResult,
   // Use Firebase default persistence (local) for web
 } from "firebase/auth";
 import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
@@ -182,15 +183,65 @@ export const createUserProfile = async (
 };
 
 /**
- * Google Sign-In with popup (web-native)
+ * Detect if we're on a mobile platform (native app or mobile browser)
+ */
+const isMobilePlatform = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  
+  // Check if running in Cordova/Capacitor (native mobile app)
+  if ((window as any).cordova || (window as any).Capacitor) {
+    return true;
+  }
+  
+  // Check user agent for mobile devices
+  const userAgent = navigator.userAgent.toLowerCase();
+  const mobilePatterns = [
+    /android/i,
+    /webos/i,
+    /iphone/i,
+    /ipad/i,
+    /ipod/i,
+    /blackberry/i,
+    /windows phone/i,
+    /mobile/i,
+    /mobi/i
+  ];
+  
+  return mobilePatterns.some(pattern => pattern.test(userAgent));
+};
+
+/**
+ * Google Sign-In with platform-aware method selection
+ * - Uses popup for desktop/web
+ * - Uses redirect for mobile/APK (required for native platforms)
  * Does NOT navigate - lets onAuthStateChanged handle routing
  */
 export const signInWithGoogle = async (): Promise<{ user: FirebaseUser; profile: UserProfile }> => {
   try {
     const provider = new GoogleAuthProvider();
     
-    // Use popup for web (faster, no redirect loop)
-    const result = await signInWithPopup(auth, provider);
+    // Detect platform and use appropriate auth method
+    const onMobile = isMobilePlatform();
+    console.log(`📱 Platform detection: ${onMobile ? 'MOBILE' : 'WEB'}`);
+    
+    let result;
+    
+    if (onMobile) {
+      // Mobile: Use redirect method (required for native apps and mobile browsers)
+      console.log('🔄 Using signInWithRedirect for mobile platform...');
+      await signInWithRedirect(auth, provider);
+      // After redirect, getRedirectResult will be called in onAuthStateChanged
+      // Return early - auth state change will be detected by listener
+      console.log('⏳ Redirect initiated, waiting for auth state change...');
+      // This will not actually return; the function will complete and 
+      // onAuthStateChanged will pick up the auth state change
+      return new Promise(() => {}); // Never resolves - auth listener handles it
+    } else {
+      // Web: Use popup method (faster, no redirect)
+      console.log('🪟 Using signInWithPopup for web platform...');
+      result = await signInWithPopup(auth, provider);
+    }
+    
     const user = result.user;
     
     console.log('🔐 signInWithGoogle: Firebase popup auth successful for', user.email);
@@ -368,11 +419,42 @@ export const signInAsGuest = async (name: string, studentType?: 'dayScholar' | '
  * Listen to authentication state changes
  * Returns user profile with role information
  * Handles Firestore read failures gracefully
+ * Handles redirect results from mobile sign-in
  * Retries profile fetch if needed for server/cashier users
  */
 export const onAuthStateChange = (
   callback: (user: FirebaseUser | null, profile: UserProfile | null) => void
 ): (() => void) => {
+  // Handle redirect result from signInWithRedirect (mobile)
+  // This needs to be called ONCE when the page loads after redirect
+  let redirectResultHandled = false;
+  
+  // Check for redirect result immediately
+  if (!redirectResultHandled) {
+    redirectResultHandled = true;
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result) {
+          console.log('✅ getRedirectResult: Got result from Google redirect:', result.user.email);
+          // User is already authenticated - onAuthStateChanged will pick it up
+          // Just ensure the profile is created
+          const user = result.user;
+          createUserProfile(user.uid, user.email || '', user.displayName || 'Student', 'student')
+            .then(() => {
+              console.log('✅ Profile ensured for redirect result');
+            })
+            .catch((err) => {
+              console.error('⚠️ Failed to ensure profile for redirect result:', err);
+              // Continue anyway - onAuthStateChanged will handle it
+            });
+        }
+      })
+      .catch((error) => {
+        console.error('⚠️ getRedirectResult error:', error);
+        // Ignore - might be during initial load without redirect
+      });
+  }
+  
   return onAuthStateChanged(auth, async (firebaseUser) => {
     if (firebaseUser) {
       try {
