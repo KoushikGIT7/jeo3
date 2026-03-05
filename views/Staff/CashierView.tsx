@@ -703,6 +703,7 @@ const CashierView: React.FC<CashierViewProps> = ({ profile, onLogout }) => {
   ] as const;
 
   const handleTabChange = (tab: CashierTab) => {
+    console.log('🔄 Switching tab from', activeTab, 'to', tab);
     setActiveTab(tab);
     setIsSidebarOpen(false); // Close sidebar on mobile after tab change
   };
@@ -715,15 +716,22 @@ const CashierView: React.FC<CashierViewProps> = ({ profile, onLogout }) => {
           {/* Overlay */}
           <div 
             className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-            onClick={() => setIsSidebarOpen(false)}
+            onClick={() => {
+              console.log('Overlay clicked - closing sidebar');
+              setIsSidebarOpen(false);
+            }}
           />
           {/* Mobile Sidebar */}
-          <div className="fixed inset-y-0 left-0 w-64 bg-white z-50 lg:hidden flex flex-col shadow-xl">
+          <div className="fixed inset-y-0 left-0 w-64 bg-white z-50 lg:hidden flex flex-col shadow-xl pointer-events-auto">
             <div className="p-6 border-b border-gray-200 flex items-center justify-between">
               <Logo size="md" />
               <button
-                onClick={() => setIsSidebarOpen(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                type="button"
+                onClick={() => {
+                  console.log('Close button clicked');
+                  setIsSidebarOpen(false);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5 text-textSecondary" />
               </button>
@@ -732,9 +740,13 @@ const CashierView: React.FC<CashierViewProps> = ({ profile, onLogout }) => {
             <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
               {navItems.map(item => (
                 <button
+                  type="button"
                   key={item.id}
-                  onClick={() => handleTabChange(item.id as CashierTab)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-black text-sm uppercase tracking-wider ${
+                  onClick={() => {
+                    console.log('Nav button clicked:', item.id);
+                    handleTabChange(item.id as CashierTab);
+                  }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-black text-sm uppercase tracking-wider cursor-pointer ${
                     activeTab === item.id
                       ? 'bg-primary text-white shadow-lg'
                       : 'text-textSecondary hover:bg-gray-100'
@@ -748,8 +760,9 @@ const CashierView: React.FC<CashierViewProps> = ({ profile, onLogout }) => {
 
             <div className="p-4 border-t border-gray-200">
               <button
+                type="button"
                 onClick={onLogout}
-                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all font-black text-sm uppercase tracking-wider"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all font-black text-sm uppercase tracking-wider cursor-pointer"
               >
                 <LogOut className="w-5 h-5 shrink-0" />
                 <span className="truncate">Logout</span>
@@ -771,9 +784,13 @@ const CashierView: React.FC<CashierViewProps> = ({ profile, onLogout }) => {
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
           {navItems.map(item => (
             <button
+              type="button"
               key={item.id}
-              onClick={() => handleTabChange(item.id as CashierTab)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-black text-sm uppercase tracking-wider ${
+              onClick={() => {
+                console.log('Desktop nav button clicked:', item.id);
+                handleTabChange(item.id as CashierTab);
+              }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-black text-sm uppercase tracking-wider cursor-pointer ${
                 activeTab === item.id
                   ? 'bg-primary text-white shadow-lg'
                   : 'text-textSecondary hover:bg-gray-100'
@@ -787,8 +804,9 @@ const CashierView: React.FC<CashierViewProps> = ({ profile, onLogout }) => {
 
         <div className="p-4 border-t border-gray-200">
           <button
+            type="button"
             onClick={onLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all font-black text-sm uppercase tracking-wider"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition-all font-black text-sm uppercase tracking-wider cursor-pointer"
           >
             <LogOut className="w-5 h-5 shrink-0" />
             <span className="truncate">Logout</span>
@@ -803,8 +821,12 @@ const CashierView: React.FC<CashierViewProps> = ({ profile, onLogout }) => {
             <div className="flex items-center gap-4 flex-1 min-w-0">
               {/* Hamburger Menu Button - Mobile Only */}
               <button
-                onClick={() => setIsSidebarOpen(true)}
-                className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0"
+                type="button"
+                onClick={() => {
+                  console.log('Hamburger menu clicked');
+                  setIsSidebarOpen(true);
+                }}
+                className="lg:hidden p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0 cursor-pointer"
                 aria-label="Open menu"
               >
                 <Menu className="w-6 h-6 text-textMain" />
