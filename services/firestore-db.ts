@@ -1223,95 +1223,73 @@ export const listenToPendingItems = (callback: (items: PendingItem[]) => void): 
 };
 
 export const validateQRForServing = async (qrData: string): Promise<Order> => {
-  console.log('🌐 [SERVICE] Validating QR via backend API...', { length: qrData.length });
+  console.log('🌐 [SERVICE] Validating QR...', { length: qrData.length });
   
   try {
-    let payload: any = {};
-    try {
-      // Check if it's a JSON object (orderId, etc.)
-      const parsed = JSON.parse(qrData);
-      if (typeof parsed === 'object' && (parsed.orderId || parsed.qrToken)) {
-        payload = parsed;
-      } else {
-        payload = { scannedData: qrData };
+    // Attempt backend API first if configured
+    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+    if (API_BASE_URL && !API_BASE_URL.includes('localhost')) {
+      try {
+        const payload = parseQRPayload(qrData) || { scannedData: qrData };
+        const response = await fetch(`${API_BASE_URL}/qr/validate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          return {
+            id: result.data.order.id,
+            userId: '', 
+            userName: result.data.order.userName,
+            items: result.data.order.items.map((it: any) => ({
+              id: it.itemId || it.id,
+              name: it.name || 'Item',
+              quantity: it.quantity || 1,
+              price: it.price || 0,
+              costPrice: 0,
+              category: 'Snacks',
+              imageUrl: '',
+              active: true
+            })),
+            totalAmount: 0,
+            paymentStatus: 'SUCCESS',
+            paymentType: 'UPI',
+            orderStatus: result.data.order.status as any,
+            qrStatus: 'USED',
+            cafeteriaId: 'MAIN_CAFE', 
+            createdAt: Date.now()
+          };
+        }
+      } catch (e) {
+        console.warn('⚠️ Backend unreachable, falling back to local validation...');
       }
-    } catch {
-      // If not JSON, it's either a raw UUID-like token or encrypted data
-      // Encrypted data usually contains ':' separator for IV
-      if (qrData.includes(':') || qrData.length > 50) {
-        payload = { scannedData: qrData };
-      } else {
-        payload = { qrToken: qrData };
-      }
     }
 
-    const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+    // FALLBACK: Local validation using Firestore (The "Free Mode" Logic)
+    const payload = parseQRPayload(qrData);
+    if (!payload) throw new Error("Invalid Token Format");
+
+    const { orderId, userId, cafeteriaId, secureHash } = payload;
+    const orderDoc = await getDoc(doc(db, "orders", orderId));
     
-    // In production, we should include the user's access token if available
-    const response = await fetch(`${API_BASE_URL}/qr/validate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
+    if (!orderDoc.exists()) throw new Error("Order not found");
+    const order = firestoreToOrder(orderDoc.id, orderDoc.data());
 
-    const result = await response.json();
-
-    if (!response.ok) {
-      console.warn('⚠️ [BACKEND] QR Validation failed:', result.message);
-      throw new Error(result.message || 'QR Validation failed');
+    // Security check
+    const qrExpiresAt = order.createdAt + 24 * 60 * 60 * 1000;
+    if (!verifySecureHash(orderId, userId, cafeteriaId, order.createdAt, qrExpiresAt, secureHash)) {
+      throw new Error("Invalid Token Signature");
     }
 
-    console.log('✅ [BACKEND] QR Validated successfully');
-    
-    // Map backend response to frontend Order type
-    const order: Order = {
-      id: result.data.order.id,
-      userId: '', 
-      userName: result.data.order.userName,
-      items: result.data.order.items.map((it: any) => ({
-        id: it.itemId || it.id,
-        name: it.name || 'Item',
-        quantity: it.quantity || 1,
-        price: it.price || 0,
-        costPrice: 0,
-        category: 'Snacks', // Default to valid category
-        imageUrl: '',
-        active: true
-      })),
-      totalAmount: 0,
-      paymentStatus: 'SUCCESS',
-      paymentType: 'UPI',
-      orderStatus: result.data.order.status as any,
-      qrStatus: 'USED',
-      cafeteriaId: 'MAIN_CAFE', 
-      createdAt: Date.now()
-    };
+    if (order.paymentStatus !== 'SUCCESS') throw new Error("PAYMENT_NOT_VERIFIED");
+    if (order.qrStatus === 'USED') throw new Error("TOKEN_ALREADY_USED");
 
-    // SYNC BRIDGE: Update Firestore so the local listeners see the order as ACTIVE/USED
-    // This allows the "readyItems" list to populate even if we scanned via PostgreSQL backend
-    try {
-      const { doc, updateDoc, serverTimestamp } = await import('firebase/firestore');
-      const { db } = await import('../firebase');
-      const orderRef = doc(db, "orders", order.id);
-      await updateDoc(orderRef, {
-        orderStatus: 'ACTIVE',
-        qrStatus: 'USED',
-        scannedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      console.log('🔄 [SYNC] Firestore updated for real-time list sync');
-    } catch (syncErr) {
-      console.warn('⚠️ [SYNC] Firestore sync failed (ignore if order is Postgres-only):', syncErr);
-    }
-
+    console.log('✅ [LOCAL] QR Validated successfully');
     return order;
   } catch (error: any) {
     console.error('❌ [SERVICE] validateQRForServing error:', error);
-    if (error.message?.includes('Failed to fetch')) {
-      throw new Error('Network Error - Backend server is unreachable. Please check your connection.');
-    }
     throw error;
   }
 };
