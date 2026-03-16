@@ -10,6 +10,7 @@ import { db } from '../../firebase';
 import SyncStatus from '../../components/SyncStatus';
 import { useMotivationalHeadline } from '../../hooks/useMotivationalHeadline';
 import MotivationalHeadline from '../../components/MotivationalHeadline';
+import QuoteDisplay from '../../components/QuoteDisplay';
 
 interface QRViewProps {
   orderId: string;
@@ -22,6 +23,18 @@ const QRView: React.FC<QRViewProps> = ({ orderId, onBack }) => {
   const [qrString, setQrString] = useState<string | null>(null);
   const qrGeneratedRef = useRef(false);
   const { visible: loadingHeadlineVisible, headline: loadingHeadline } = useMotivationalHeadline(loading);
+  const [orderCount, setOrderCount] = useState<number>(1);
+
+  // Initialize or increment standard orderCount simulator since we don't have this in the DB yet
+  useEffect(() => {
+    if (!orderId) return;
+    const history = JSON.parse(localStorage.getItem('joe_order_history') || '[]');
+    if (!history.includes(orderId)) {
+      history.push(orderId);
+      localStorage.setItem('joe_order_history', JSON.stringify(history));
+    }
+    setOrderCount(history.length);
+  }, [orderId]);
 
   useEffect(() => {
     console.log('📱 QRView: Setting up real-time listener for order:', orderId);
@@ -238,6 +251,9 @@ const QRView: React.FC<QRViewProps> = ({ orderId, onBack }) => {
              </div>
           </div>
         </div>
+
+        {/* ✨ UX Micro-Interaction: Smart Motivational Quote Engine */}
+        {qrIsVisible && <QuoteDisplay order={order} orderCount={orderCount} />}
 
         {/* Instructions */}
         <div className="mt-8 space-y-4 w-full">
