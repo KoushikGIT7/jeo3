@@ -141,9 +141,9 @@ const ServingCounterView: React.FC<ServingCounterViewProps> = ({ profile, onLogo
     const unsubscribe = listenToActiveOrders((orders) => {
       const ready: ReadyItem[] = [];
       
-      // Only process orders that have been scanned (qrStatus = USED, scannedAt exists)
+      // Only process orders that have been scanned (qrState = SCANNED)
       orders
-        .filter(order => order.qrStatus === 'USED' && order.scannedAt !== undefined)
+        .filter(order => order.qrState === 'SCANNED')
         .forEach(order => {
           order.items.forEach(item => {
             const remainingQty = item.remainingQty !== undefined ? item.remainingQty : item.quantity;
@@ -239,14 +239,20 @@ const ServingCounterView: React.FC<ServingCounterViewProps> = ({ profile, onLogo
             }
           }
             } else {
-              // Not JSON, try parseQRPayload from qr module
-              const { parseQRPayload } = await import('../../services/qr');
-              const parsed = parseQRPayload(trimmed);
-              if (parsed) {
-                qrPayload = parsed;
-                console.log('✅ Parsed using parseQRPayload:', qrPayload);
+              // Not JSON, check if it's a plain order ID
+              if (trimmed.startsWith('order_')) {
+                qrPayload = { orderId: trimmed };
+                console.log('✅ Identified plain Order ID:', qrPayload.orderId);
               } else {
-                throw new Error('Invalid QR Format - Not JSON and cannot parse');
+                // Try parseQRPayload from qr module for other legacy formats
+                const { parseQRPayload } = await import('../../services/qr');
+                const parsed = parseQRPayload(trimmed);
+                if (parsed) {
+                  qrPayload = parsed;
+                  console.log('✅ Parsed using parseQRPayload:', qrPayload);
+                } else {
+                  throw new Error('Invalid QR Format - Not JSON and cannot identify as Order ID');
+                }
               }
             }
       }

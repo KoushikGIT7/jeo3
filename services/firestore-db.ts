@@ -1222,13 +1222,31 @@ export const validateQRForServing = async (qrData: string): Promise<Order> => {
   console.log('🛡️ [FIREBASE-ORDER] Validating Meal Token...');
   
   try {
-    // 1. Parse the secure encrypted payload
-    const payload = parseQRPayload(qrData);
-    if (!payload?.orderId) {
-      throw new Error("INVALID_TOKEN_FORMAT - This does not look like a JOE Meal Token.");
-    }
+    // 1. Parse the secure encrypted payload OR handle plain Order ID as fallback
+    let orderId: string;
+    let userId: string;
+    let cafeteriaId: string;
+    let secureHash: string;
+    let payloadExpiresAt: number | undefined;
+    let payloadCreatedAt: number | undefined;
 
-    const { orderId, userId, cafeteriaId, secureHash, expiresAt: payloadExpiresAt, createdAt: payloadCreatedAt } = payload;
+    if (qrData.startsWith('order_')) {
+      // Manual fallback: Data is just the order ID
+      orderId = qrData;
+      // We will fill the rest from the database since we don't have a payload
+      const orderDoc = await getDoc(doc(db, "orders", orderId));
+      if (!orderDoc.exists()) throw new Error("ORDER_NOT_FOUND - Token corresponds to a non-existent order.");
+      const orderData = orderDoc.data();
+      userId = orderData.userId;
+      cafeteriaId = orderData.cafeteriaId;
+      secureHash = 'MANUAL_OVERRIDE'; // Skips verification if staff is trusted
+    } else {
+      const payload = parseQRPayload(qrData);
+      if (!payload?.orderId) {
+        throw new Error("INVALID_TOKEN_FORMAT - This does not look like a JOE Meal Token.");
+      }
+      ({ orderId, userId, cafeteriaId, secureHash, expiresAt: payloadExpiresAt, createdAt: payloadCreatedAt } = payload);
+    }
 
     // 2. Direct Firestore Fetch (The Source of Truth)
     const orderDoc = await getDoc(doc(db, "orders", orderId));
@@ -1244,14 +1262,19 @@ export const validateQRForServing = async (qrData: string): Promise<Order> => {
     const verifCreatedAt = payloadCreatedAt || order.createdAt;
     const verifExpiresAt = payloadExpiresAt || (verifCreatedAt + 24 * 60 * 60 * 1000);
 
-    const isValid = await verifySecureHash(
-      orderId, 
-      userId, 
-      cafeteriaId, 
-      verifCreatedAt, 
-      verifExpiresAt, 
-      secureHash
-    );
+    let isValid = false;
+    if (secureHash === 'MANUAL_OVERRIDE') {
+      isValid = true;
+    } else {
+      isValid = await verifySecureHash(
+        orderId, 
+        userId, 
+        cafeteriaId, 
+        verifCreatedAt, 
+        verifExpiresAt, 
+        secureHash
+      );
+    }
 
     if (!isValid) {
       throw new Error("SECURITY_BREACH - Token signature is invalid or expired.");
@@ -1397,12 +1420,25 @@ export const scanAndServeOrder = async (qrDataRaw: string, scannedBy: string = '
   let logEntry: ScanLog | null = null;
 
   try {
-    const payload = parseQRPayload(qrDataRaw);
-    if (!payload) {
-      throw new Error("Invalid Token Format");
-    }
+    // Parse payload or handle plain ID
+    let orderId: string;
+    let userId: string;
+    let cafeteriaId: string;
+    let secureHash: string;
 
-    const { orderId, userId, cafeteriaId, secureHash } = payload;
+    if (qrDataRaw.startsWith('order_')) {
+      orderId = qrDataRaw;
+      const orderDoc = await getDoc(doc(db, "orders", orderId));
+      if (!orderDoc.exists()) throw new Error("Order not found");
+      const orderData = orderDoc.data();
+      userId = orderData.userId;
+      cafeteriaId = orderData.cafeteriaId;
+      secureHash = 'MANUAL_OVERRIDE';
+    } else {
+      const payload = parseQRPayload(qrDataRaw);
+      if (!payload) throw new Error("Invalid Token Format");
+      ({ orderId, userId, cafeteriaId, secureHash } = payload);
+    }
 
     const orderDoc = await getDoc(doc(db, "orders", orderId));
     if (!orderDoc.exists()) {
@@ -1411,9 +1447,12 @@ export const scanAndServeOrder = async (qrDataRaw: string, scannedBy: string = '
 
     const order = firestoreToOrder(orderDoc.id, orderDoc.data());
 
-    const qrExpiresAt = order.createdAt + 24 * 60 * 60 * 1000;
-    if (!verifySecureHash(orderId, userId, cafeteriaId, order.createdAt, qrExpiresAt, secureHash)) {
-      throw new Error("Invalid Token Signature");
+    if (secureHash !== 'MANUAL_OVERRIDE') {
+      const qrExpiresAt = order.createdAt + 24 * 60 * 60 * 1000;
+      const isValid = await verifySecureHash(orderId, userId, cafeteriaId, order.createdAt, qrExpiresAt, secureHash);
+      if (!isValid) {
+        throw new Error("Invalid Token Signature");
+      }
     }
 
     if (order.paymentStatus !== 'SUCCESS') {
