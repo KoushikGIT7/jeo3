@@ -277,7 +277,7 @@ const ServingCounterView: React.FC<ServingCounterViewProps> = ({ profile, onLogo
       console.log('   Order ID:', order.id);
       console.log('   Items:', order.items.length);
       
-      // Show success message with order details
+      // Show a brief success indicator instead of a giant modal that auto-hides
       setSuccess({
         orderId: order.id,
         orderNumber: order.id.slice(-8).toUpperCase(),
@@ -286,16 +286,14 @@ const ServingCounterView: React.FC<ServingCounterViewProps> = ({ profile, onLogo
         qrDataRaw: qrDataString
       });
       
-      // Auto-hide success after 3 seconds
+      // Clear success state after scan so user can keep scanning, 
+      // but the item stays in the list because qrState is now SCANNED
       setTimeout(() => {
         setSuccess(null);
         setIsScanning(false);
-        // Refocus scanner for next scan
         const scanner = getScanner();
-        if (scanner) {
-          setTimeout(() => scanner.focus(), 100);
-        }
-      }, 3000);
+        if (scanner) scanner.focus();
+      }, 1500);
       
     } catch (err: any) {
       setIsScanning(false);
@@ -428,74 +426,16 @@ const ServingCounterView: React.FC<ServingCounterViewProps> = ({ profile, onLogo
         />
       )}
       {/* Order confirmation panel — overlay; scanner layout stays visible underneath */}
+      {/* Minimalist Scan Successful Toast */}
       {success && (
-        <div
-          className="absolute inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
-          onClick={dismissSuccess}
-        >
-          <div
-            className="w-full bg-[#1a1a1a] text-white rounded-t-[2.5rem] sm:rounded-[2.5rem] shadow-2xl border-t border-white/10 sm:max-w-md pointer-events-auto flex flex-col max-h-[85vh] overflow-hidden"
-            style={{ animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)' }}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="order-success-title"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Success Header */}
-            <div className="p-6 pb-2 text-center relative">
-               <div className="absolute top-2 left-1/2 -translate-x-1/2 w-12 h-1 bg-white/10 rounded-full sm:hidden" />
-               <div className="w-16 h-16 bg-success rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-success/20 mb-4">
-                  <CheckCircle className="w-10 h-10 text-white" />
-               </div>
-               <div className="inline-flex items-center gap-2 bg-success/10 text-success px-3 py-1 rounded-full border border-success/20 mb-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Token Authorized</span>
-               </div>
-               <h2 id="order-success-title" className="text-3xl font-black uppercase tracking-tighter">Order #{success.orderNumber}</h2>
-               <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mt-1">Customer: {success.userName}</p>
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-top duration-300 pointer-events-none">
+          <div className="bg-success text-white px-8 py-4 rounded-3xl shadow-2xl flex items-center gap-4">
+            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-white" />
             </div>
-
-            {/* LARGE ITEMS VIEW */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              {success.items.map((item, index) => (
-                <div key={index} className="bg-white/5 border border-white/10 rounded-3xl p-3 flex items-center gap-4">
-                   <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gray-900 border border-white/10 flex-shrink-0 shadow-inner">
-                      <img 
-                        src={item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop'} 
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                      />
-                   </div>
-                   <div className="flex-1 pr-4">
-                      <h3 className="text-xl font-black tracking-tight leading-tight mb-1">{item.name}</h3>
-                      <div className="flex items-center gap-2">
-                         <span className="text-2xl font-black text-primary">x{item.quantity}</span>
-                         <span className="bg-white/10 px-2 py-0.5 rounded text-[8px] font-black text-white/40 uppercase tracking-widest leading-none">Qty</span>
-                      </div>
-                   </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Action Footer */}
-            <div className="p-6 bg-black/40 border-t border-white/5 space-y-3">
-               <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={dismissSuccess}
-                    className="bg-white/5 hover:bg-white/10 py-5 rounded-3xl font-black uppercase tracking-widest active:scale-95 transition-all flex items-center justify-center gap-2 border border-white/10"
-                  >
-                    OK
-                  </button>
-                  <button
-                    onClick={handleServeAllFromScan}
-                    disabled={servingKey === 'SERVE_ALL'}
-                    className="bg-success hover:bg-success/90 py-5 rounded-3xl font-black uppercase tracking-widest active:scale-95 transition-all shadow-xl shadow-success/30 flex items-center justify-center gap-2"
-                  >
-                    {servingKey === 'SERVE_ALL' ? <RefreshCw className="animate-spin w-5 h-5" /> : <CheckCircle className="w-5 h-5" />}
-                    Serve All
-                  </button>
-               </div>
-               <p className="text-center text-[9px] font-black text-white/20 uppercase tracking-[0.2em]">Destroys QR on serve</p>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-80 leading-none">Token Authorized</p>
+              <p className="text-xl font-black">{success.userName}</p>
             </div>
           </div>
         </div>
@@ -649,56 +589,69 @@ const ServingCounterView: React.FC<ServingCounterViewProps> = ({ profile, onLogo
                   return acc;
                 }, {} as Record<string, ReadyItem[]>);
 
-                return Object.entries(groupedByOrder).map(([orderNumber, items]) => (
-                  <div key={orderNumber} className="bg-gray-50 rounded-xl sm:rounded-2xl p-3 sm:p-4 lg:p-6 border-2 sm:border-4 border-green-400 shadow-lg">
-                    <div className="bg-black text-white px-4 sm:px-6 py-2 sm:py-3 rounded-xl mb-3 sm:mb-4 text-center">
-                      <p className="text-[10px] sm:text-xs font-black uppercase tracking-widest text-gray-300 mb-1">ORDER NO</p>
-                      <p className="text-xl sm:text-2xl lg:text-3xl font-black">#{orderNumber}</p>
-                    </div>
-                    
-                    <div className="space-y-2 sm:space-y-3">
-                      {(items as ReadyItem[]).map((item) => {
-                        const key = `${item.orderId}_${item.itemId}`;
-                        const isServing = servingKey === key;
+                return Object.entries(groupedByOrder).map(([orderNumber, items]) => {
+                  const firstItem = items[0];
+                  return (
+                    <div key={orderNumber} className="bg-white rounded-3xl p-4 sm:p-6 lg:p-8 border-4 border-green-500 shadow-2xl animate-in zoom-in-95 duration-300">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 pb-4 border-b-2 border-green-100">
+                        <div className="text-center sm:text-left">
+                           <p className="text-[10px] font-black uppercase tracking-widest text-green-600 mb-1">Customer Token</p>
+                           <h3 className="text-2xl sm:text-3xl font-black text-gray-900 leading-none">{firstItem.userName}</h3>
+                        </div>
+                        <div className="bg-black text-white px-5 py-2 rounded-2xl">
+                          <p className="text-[8px] font-black uppercase tracking-widest text-gray-400">Order Ref</p>
+                          <p className="text-lg font-black tabular-nums">#{orderNumber}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {(items as ReadyItem[]).map((item) => {
+                          const key = `${item.orderId}_${item.itemId}`;
+                          const isServing = servingKey === key;
 
-                        return (
-                          <div
-                            key={key}
-                            className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 bg-white rounded-xl p-3 sm:p-4 border-2 border-green-300"
-                          >
-                            <img
-                              src={item.imageUrl || 'https://images.unsplash.com/photo-1630383249896-424e482df921?auto=format&fit=crop&q=80&w=400'}
-                              alt={item.itemName}
-                              className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 object-cover rounded-lg shadow-md flex-shrink-0"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.src = 'https://images.unsplash.com/photo-1630383249896-424e482df921?auto=format&fit=crop&q=80&w=400';
-                              }}
-                            />
-                            <div className="flex-1 min-w-0 w-full sm:w-auto">
-                              <h3 className="text-lg sm:text-xl lg:text-2xl font-black text-gray-800 mb-1 break-words">{item.itemName}</h3>
-                              <p className="text-sm sm:text-base lg:text-lg text-gray-600">
-                                Ordered: {item.orderedQty} | Served: {item.servedQty} | <span className="text-orange-600 font-black">Left: {item.remainingQty}</span>
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => handleServeReadyItem(item)}
-                              disabled={isServing}
-                              className="min-h-[48px] sm:min-h-[52px] bg-green-500 hover:bg-green-600 active:scale-[0.98] text-white px-5 sm:px-6 py-3 rounded-xl text-base sm:text-lg font-black uppercase tracking-wider shadow-lg transition-transform disabled:opacity-60 disabled:pointer-events-none flex items-center justify-center gap-2 w-full sm:w-auto sm:min-w-[140px] touch-manipulation"
-                              aria-label={isServing ? 'Serving' : `Serve ${item.itemName}`}
+                          return (
+                            <div
+                              key={key}
+                              className="flex flex-col lg:flex-row items-center gap-6 bg-gray-50 rounded-3xl p-4 sm:p-6 border-2 border-green-200 hover:border-green-400 transition-colors"
                             >
-                              {isServing ? (
-                                <span className="inline-flex items-center gap-2"><span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Serving</span>
-                              ) : (
-                                <><CheckCircle className="w-5 h-5 sm:w-6 sm:h-6" /> Serve</>
-                              )}
-                            </button>
-                          </div>
-                        );
-                      })}
+                              <div className="w-40 h-40 sm:w-48 sm:h-48 rounded-[2rem] overflow-hidden shadow-xl border-4 border-white flex-shrink-0">
+                                <img
+                                  src={item.imageUrl || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&h=400&fit=crop'}
+                                  alt={item.itemName}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                              <div className="flex-1 text-center lg:text-left min-w-0 w-full">
+                                <h4 className="text-2xl sm:text-3xl lg:text-4xl font-black text-gray-900 mb-2 leading-tight tracking-tight">{item.itemName}</h4>
+                                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3">
+                                   <div className="bg-white px-4 py-2 rounded-xl border border-gray-200">
+                                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">To Serve</p>
+                                      <p className="text-3xl font-black text-green-600">{item.remainingQty}</p>
+                                   </div>
+                                   <div className="bg-white px-4 py-2 rounded-xl border border-gray-200">
+                                      <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest">Total Order</p>
+                                      <p className="text-3xl font-black text-gray-300">{item.orderedQty}</p>
+                                   </div>
+                                </div>
+                              </div>
+                              <button
+                                onClick={() => handleServeReadyItem(item)}
+                                disabled={isServing}
+                                className="w-full lg:w-auto min-h-[80px] lg:min-w-[180px] bg-green-500 hover:bg-green-600 active:scale-[0.98] text-white px-8 py-4 rounded-[2rem] text-2xl font-black uppercase tracking-widest shadow-xl shadow-green-200 transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+                              >
+                                {isServing ? (
+                                  <RefreshCw className="w-8 h-8 animate-spin" />
+                                ) : (
+                                  <><CheckCircle className="w-8 h-8" /> Serve</>
+                                )}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                ));
+                  );
+                });
               })()
             )}
           </div>

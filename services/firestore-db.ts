@@ -1167,9 +1167,7 @@ export const listenToActiveOrders = (callback: (orders: Order[]) => void): (() =
   return onSnapshot(
     query(
       collection(db, "orders"),
-      where("orderStatus", "==", "ACTIVE"),
-      where("paymentStatus", "==", "SUCCESS"),
-      where("qrStatus", "==", "USED"),
+      where("qrState", "==", "SCANNED"),
       orderBy("scannedAt", "desc")
     ),
     (snapshot) => {
@@ -1187,9 +1185,7 @@ export const listenToPendingItems = (callback: (items: PendingItem[]) => void): 
   return onSnapshot(
     query(
       collection(db, "orders"),
-      where("orderStatus", "==", "ACTIVE"),
-      where("paymentStatus", "==", "SUCCESS"),
-      where("qrStatus", "==", "USED"),
+      where("qrState", "==", "SCANNED"),
       orderBy("scannedAt", "desc")
     ),
     (snapshot) => {
@@ -1273,7 +1269,15 @@ export const validateQRForServing = async (qrData: string): Promise<Order> => {
     }
 
     console.log('✅ [FIREBASE-ORDER] Token validated successfully:', orderId);
-    return order;
+
+    // 5. Mark as SCANNED in database so it appears at serving counter
+    const orderRef = doc(db, "orders", orderId);
+    await updateDoc(orderRef, {
+      scannedAt: serverTimestamp(),
+      qrState: 'SCANNED'
+    });
+
+    return { ...order, scannedAt: Date.now(), qrState: 'SCANNED' };
   } catch (error: any) {
     console.error('❌ [SCAN-ERROR]:', error.message);
     throw error;
@@ -1354,6 +1358,8 @@ export const serveItem = async (orderId: string, itemId: string, servedBy: strin
           remainingQty: item.remainingQty !== undefined ? item.remainingQty : item.quantity
         })),
         orderStatus: newOrderStatus,
+        qrStatus: allItemsServed ? 'USED' : order.qrStatus,
+        qrState: allItemsServed ? 'SERVED' : 'SCANNED',
         servedAt: allItemsServed ? serverTimestamp() : order.servedAt ? Timestamp.fromMillis(order.servedAt) : null
       });
 
